@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Utility Consumption Dashboard</title>
+<script>__ECHARTS__</script>
+<style>
+  :root{
+    --bg:#0f1521; --panel:#161e2e; --panel2:#1d273b; --line:#28344c;
+    --txt:#e6ecf5; --muted:#8a99b5; --accent:#4f8cff;
+    --elec:#f7b500; --water:#3fa9f5; --gas:#ff6b6b; --thermal:#9b6dff;
+    --good:#34d399; --bad:#f87171;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  header{padding:20px 28px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  header h1{margin:0;font-size:20px;font-weight:650;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .layout{display:grid;grid-template-columns:300px 1fr;gap:22px;padding:22px 28px;align-items:start}
+  @media(max-width:980px){.layout{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .sidebar{padding:18px;position:sticky;top:18px}
+  .sidebar h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  .field{margin-bottom:20px}
+  label.lbl{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  input,select,button{font:inherit;color:var(--txt)}
+  input[type=date],select{width:100%;background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;padding:8px 10px;outline:none}
+  input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
+  .dates{display:flex;gap:8px}
+  .presets{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:20px;
+    padding:5px 11px;font-size:12px;cursor:pointer;color:var(--muted);transition:.15s}
+  .chip:hover{border-color:var(--accent);color:var(--txt)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{flex:1;background:none;border:none;padding:8px;cursor:pointer;color:var(--muted);font-size:13px}
+  .seg button.on{background:var(--accent);color:#fff}
+  .bsearch{margin-bottom:8px}
+  .bhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .bhead .mini{font-size:11px;color:var(--muted);cursor:pointer}
+  .blist{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:4px}
+  .brow{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;cursor:pointer;font-size:12.5px}
+  .brow:hover{background:var(--panel2)}
+  .brow input{width:auto}
+  .brow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .blist::-webkit-scrollbar{width:9px}.blist::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+  .content{display:flex;flex-direction:column;gap:22px;min-width:0}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:1200px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.kpis{grid-template-columns:1fr}}
+  .kpi{padding:16px 16px 8px;position:relative;overflow:hidden}
+  .kpi .top{display:flex;justify-content:space-between;align-items:center}
+  .kpi .name{font-size:12.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:7px}
+  .kpi .dot{width:9px;height:9px;border-radius:50%}
+  .kpi .val{font-size:26px;font-weight:700;margin:8px 0 1px;letter-spacing:.3px}
+  .kpi .unit{font-size:13px;color:var(--muted);font-weight:500}
+  .kpi .meta{font-size:11.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-top:2px}
+  .kpi .trend{font-weight:600}
+  .kpi .spark{height:42px;margin:6px -16px -8px}
+  .trend.up{color:var(--bad)}.trend.down{color:var(--good)}.trend.flat{color:var(--muted)}
+  .card{padding:18px}
+  .card h2{margin:0 0 2px;font-size:15px;font-weight:600}
+  .card .csub{color:var(--muted);font-size:12px;margin-bottom:12px}
+  .chart{width:100%;height:340px}
+  .chart.short{height:300px}
+  .grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:22px}
+  @media(max-width:1100px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;
+    cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:hover{background:var(--panel2)}
+  .tbl-wrap{max-height:430px;overflow:auto;border-radius:9px}
+  .empty{color:var(--muted);text-align:center;padding:40px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>⚡ Utility Consumption Dashboard</h1>
+    <div class="sub" id="hsub"></div>
+  </div>
+  <div class="sub" id="hgen"></div>
+</header>
+
+<div class="layout">
+  <aside class="panel sidebar">
+    <h3>Filters</h3>
+
+    <div class="field">
+      <label class="lbl">Date range</label>
+      <div class="dates">
+        <input type="date" id="from"><input type="date" id="to">
+      </div>
+      <div class="presets" id="presets">
+        <span class="chip" data-d="7">7d</span>
+        <span class="chip" data-d="30">30d</span>
+        <span class="chip" data-d="90">90d</span>
+        <span class="chip" data-d="all">All</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Granularity</label>
+      <div class="seg" id="gran">
+        <button data-g="day" class="on">Daily</button>
+        <button data-g="week">Weekly</button>
+        <button data-g="month">Monthly</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Focus metric (chart &amp; ranking)</label>
+      <select id="metric"></select>
+    </div>
+
+    <div class="field">
+      <div class="bhead">
+        <label class="lbl" style="margin:0">Buildings (<span id="bcount"></span>)</label>
+        <div><span class="mini" id="ball">All</span> · <span class="mini" id="bnone">None</span></div>
+      </div>
+      <input class="bsearch" type="text" id="bsearch" placeholder="Search building…"
+        style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;outline:none">
+      <div class="blist" id="blist"></div>
+    </div>
+  </aside>
+
+  <main class="content">
+    <section class="kpis" id="kpis"></section>
+
+    <section class="card panel">
+      <h2 id="tsTitle">Daily consumption</h2>
+      <div class="csub" id="tsSub"></div>
+      <div class="chart" id="tsChart"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="card panel">
+        <h2 id="rankTitle">Top buildings</h2>
+        <div class="csub" id="rankSub"></div>
+        <div class="chart short" id="rankChart"></div>
+      </section>
+      <section class="card panel">
+        <h2>Period share by building</h2>
+        <div class="csub" id="pieSub"></div>
+        <div class="chart short" id="pieChart"></div>
+      </section>
+    </div>
+
+    <section class="card panel">
+      <h2 id="scTitle">Consumption vs. outside temperature</h2>
+      <div class="csub" id="scSub"></div>
+      <div class="chart" id="scatterChart"></div>
+    </section>
+
+    <section class="card panel">
+      <h2>Per-building totals</h2>
+      <div class="csub">Consumption summed over the selected period. Click a header to sort.</div>
+      <div class="tbl-wrap"><table id="tbl"></table></div>
+    </section>
+  </main>
+</div>
+
+<script>const DATA = __DATA__;</script>
+<script>
+/* ---------- state ---------- */
+const M_COLOR = {Electricity:'var(--elec)',Water:'var(--water)',Gas:'var(--gas)',Thermal:'var(--thermal)'};
+const M_HEX   = {Electricity:'#f7b500',Water:'#3fa9f5',Gas:'#ff6b6b',Thermal:'#9b6dff'};
+const fmt = n => n>=1e6 ? (n/1e6).toFixed(2)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'k' : n.toFixed(n<10?2:1);
+const fmtFull = n => n.toLocaleString(undefined,{maximumFractionDigits:1});
+
+const state = {
+  from: DATA.dateMin, to: DATA.dateMax,
+  gran: 'day', metric: DATA.metrics[0],
+  buildings: new Set(DATA.buildings.map(b=>b.code)),
+  sortKey: '__name', sortDir: 1,
+};
+
+/* ---------- date helpers ---------- */
+const addDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);};
+const diffDays=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
+function daysBetween(a,b){const out=[];let d=a;while(d<=b){out.push(d);d=addDays(d,1);}return out;}
+function weekStart(s){const d=new Date(s+'T00:00:00');const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);return d.toISOString().slice(0,10);}
+function bucketKey(day){
+  if(state.gran==='day') return day;
+  if(state.gran==='week') return weekStart(day);
+  return day.slice(0,7);
+}
+function bucketLabel(k){
+  if(state.gran==='day') return k.slice(5);
+  if(state.gran==='week') return 'wk '+k.slice(5);
+  return k;
+}
+
+/* ---------- core aggregation ---------- */
+// sum consumption for a metric across selected buildings, per day, within [from,to]
+function dailySeries(metric, from, to){
+  const acc={};
+  state.buildings.forEach(code=>{
+    const md=DATA.daily[code]; if(!md||!md[metric]) return;
+    const dd=md[metric];
+    for(const day in dd){ if(day>=from && day<=to) acc[day]=(acc[day]||0)+dd[day]; }
+  });
+  return acc;
+}
+function bucketed(metric, from, to){
+  const day=dailySeries(metric,from,to), out={};
+  for(const d in day){const k=bucketKey(d);out[k]=(out[k]||0)+day[d];}
+  return out;
+}
+function totalFor(metric, from, to){
+  const dd=dailySeries(metric,from,to);
+  return Object.values(dd).reduce((a,b)=>a+b,0);
+}
+// total per building for a metric in range
+function perBuilding(metric, from, to){
+  const out={};
+  state.buildings.forEach(code=>{
+    const md=DATA.daily[code]; if(!md||!md[metric]) return;
+    let s=0; const dd=md[metric];
+    for(const day in dd){ if(day>=from && day<=to) s+=dd[day]; }
+    if(s>0) out[code]=s;
+  });
+  return out;
+}
+
+/* ---------- charts ---------- */
+const charts={};
+function chart(id){ if(!charts[id]) charts[id]=echarts.init(document.getElementById(id),null,{renderer:'canvas'}); return charts[id]; }
+const AXIS={axisLine:{lineStyle:{color:'#3a4860'}},axisLabel:{color:'#8a99b5'},splitLine:{lineStyle:{color:'#222d42'}}};
+const TT={backgroundColor:'#0f1521',borderColor:'#28344c',textStyle:{color:'#e6ecf5'}};
+
+// average outside temperature per bucket (null where no reading)
+function tempBucketed(keys){
+  const sum={},cnt={};
+  for(const d in (DATA.temp||{})){
+    if(d<state.from||d>state.to) continue;
+    const k=bucketKey(d); sum[k]=(sum[k]||0)+DATA.temp[d]; cnt[k]=(cnt[k]||0)+1;
+  }
+  return keys.map(k=>cnt[k]?+(sum[k]/cnt[k]).toFixed(1):null);
+}
+function periodTempAvg(){
+  let s=0,n=0,mn=99,mx=-99;
+  for(const d in (DATA.temp||{})){ if(d<state.from||d>state.to)continue;
+    const t=DATA.temp[d]; s+=t;n++; if(t<mn)mn=t; if(t>mx)mx=t; }
+  return n?{avg:s/n,min:mn,max:mx}:null;
+}
+function renderTS(){
+  const u=DATA.units[state.metric];
+  const buk=bucketed(state.metric,state.from,state.to);
+  const keys=Object.keys(buk).sort();
+  const vals=keys.map(k=>+buk[k].toFixed(2));
+  const temps=tempBucketed(keys);
+  const hasTemp=temps.some(t=>t!==null);
+  // moving average (window 7 for daily, else 3)
+  const w=state.gran==='day'?7:3, ma=vals.map((_,i)=>{
+    const s=Math.max(0,i-w+1);const seg=vals.slice(s,i+1);
+    return +(seg.reduce((a,b)=>a+b,0)/seg.length).toFixed(2);
+  });
+  const ta=periodTempAvg();
+  document.getElementById('tsTitle').textContent=`${state.metric} consumption vs. outside temperature`;
+  document.getElementById('tsSub').textContent=
+    `${state.gran[0].toUpperCase()+state.gran.slice(1)} totals · ${u} · ${state.buildings.size} building(s)`
+    + (ta?`   ·   🌡 ${DATA.tempLocation||''} avg ${ta.avg.toFixed(1)}°C (${ta.min.toFixed(0)}…${ta.max.toFixed(0)}°C)`:'');
+  chart('tsChart').setOption({
+    tooltip:{trigger:'axis',...TT,formatter:ps=>{
+      let s='<b>'+ps[0].axisValueLabel+'</b>';
+      ps.forEach(p=>{ if(p.value==null)return;
+        const unit=p.seriesName==='Outside °C'?'°C':u;
+        s+='<br>'+p.marker+p.seriesName+': '+fmtFull(+p.value)+' '+unit; });
+      return s;
+    }},
+    grid:{left:58,right:hasTemp?56:24,top:30,bottom:70},
+    legend:{data:[state.metric,'Moving avg',...(hasTemp?['Outside °C']:[])],textStyle:{color:'#8a99b5'},top:0,right:0},
+    xAxis:{type:'category',data:keys.map(bucketLabel),...AXIS,axisLabel:{...AXIS.axisLabel,rotate:keys.length>20?45:0}},
+    yAxis:[
+      {type:'value',...AXIS,name:u,nameTextStyle:{color:'#8a99b5'}},
+      {type:'value',...AXIS,name:'°C',position:'right',nameTextStyle:{color:'#ff9f43'},
+       axisLabel:{...AXIS.axisLabel,formatter:'{value}°'},splitLine:{show:false}},
+    ],
+    dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:24,borderColor:'#28344c',
+      fillerColor:'rgba(79,140,255,.18)',handleStyle:{color:'#4f8cff'},textStyle:{color:'#8a99b5'}}],
+    series:[
+      {name:state.metric,type:'bar',yAxisIndex:0,data:vals,
+       itemStyle:{color:M_HEX[state.metric],borderRadius:[3,3,0,0]},barMaxWidth:34},
+      {name:'Moving avg',type:'line',yAxisIndex:0,data:ma,smooth:true,symbol:'none',
+       lineStyle:{color:'#e6ecf5',width:2,type:'dashed'}},
+      ...(hasTemp?[{name:'Outside °C',type:'line',yAxisIndex:1,data:temps,smooth:true,
+        symbol:'none',connectNulls:true,lineStyle:{color:'#ff9f43',width:2.5},
+        areaStyle:{color:'rgba(255,159,67,.07)'},z:1}]:[]),
+    ],
+  },true);
+}
+
+function renderRank(){
+  const u=DATA.units[state.metric];
+  const pb=perBuilding(state.metric,state.from,state.to);
+  const arr=Object.entries(pb).sort((a,b)=>b[1]-a[1]).slice(0,15).reverse();
+  const names=arr.map(([c])=>bname(c)), vals=arr.map(([,v])=>+v.toFixed(1));
+  document.getElementById('rankTitle').textContent=`Top buildings — ${state.metric}`;
+  document.getElementById('rankSub').textContent=`Highest ${state.metric.toLowerCase()} use this period (${u})`;
+  chart('rankChart').setOption({
+    tooltip:{trigger:'axis',...TT,axisPointer:{type:'shadow'},valueFormatter:v=>fmtFull(+v)+' '+u},
+    grid:{left:8,right:60,top:10,bottom:24,containLabel:true},
+    xAxis:{type:'value',...AXIS},
+    yAxis:{type:'category',data:names,...AXIS,axisLabel:{...AXIS.axisLabel,width:150,overflow:'truncate'}},
+    series:[{type:'bar',data:vals,itemStyle:{color:M_HEX[state.metric],borderRadius:[0,4,4,0]},
+      label:{show:true,position:'right',color:'#8a99b5',formatter:p=>fmt(p.value)}}],
+  },true);
+}
+
+function renderPie(){
+  const u=DATA.units[state.metric];
+  const pb=perBuilding(state.metric,state.from,state.to);
+  const arr=Object.entries(pb).sort((a,b)=>b[1]-a[1]);
+  const top=arr.slice(0,8), rest=arr.slice(8).reduce((a,[,v])=>a+v,0);
+  const data=top.map(([c,v])=>({name:bname(c),value:+v.toFixed(1)}));
+  if(rest>0) data.push({name:`Other (${arr.length-8})`,value:+rest.toFixed(1)});
+  document.getElementById('pieSub').textContent=`${state.metric} split across buildings (${u})`;
+  chart('pieChart').setOption({
+    tooltip:{trigger:'item',...TT,valueFormatter:v=>fmtFull(+v)+' '+u},
+    legend:{type:'scroll',orient:'vertical',right:0,top:6,bottom:6,textStyle:{color:'#8a99b5'},
+      formatter:n=>n.length>20?n.slice(0,20)+'…':n},
+    series:[{type:'pie',radius:['42%','70%'],center:['34%','52%'],data,
+      itemStyle:{borderColor:'#161e2e',borderWidth:2},
+      label:{show:false},emphasis:{label:{show:false}}}],
+  },true);
+}
+
+/* ---------- consumption vs temperature ---------- */
+function pearson(xs,ys){
+  const n=xs.length; if(n<3) return null;
+  const mx=xs.reduce((a,b)=>a+b,0)/n, my=ys.reduce((a,b)=>a+b,0)/n;
+  let sxy=0,sxx=0,syy=0;
+  for(let i=0;i<n;i++){const dx=xs[i]-mx,dy=ys[i]-my;sxy+=dx*dy;sxx+=dx*dx;syy+=dy*dy;}
+  if(sxx===0||syy===0) return null;
+  const b=sxy/sxx;
+  return {r:sxy/Math.sqrt(sxx*syy), b, a:my-b*mx};
+}
+function renderScatter(){
+  const u=DATA.units[state.metric], gl=state.gran;
+  const buk=bucketed(state.metric,state.from,state.to);
+  const keys=Object.keys(buk).sort();
+  const temps=tempBucketed(keys);
+  const pts=[]; keys.forEach((k,i)=>{ if(temps[i]!=null) pts.push([temps[i], +buk[k].toFixed(2), bucketLabel(k)]); });
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  const fit=pearson(xs,ys);
+  document.getElementById('scTitle').textContent=`${state.metric} vs. outside temperature`;
+  let sub=`Each point = one ${gl==='day'?'day':gl} · ${u} vs °C · ${pts.length} points`;
+  let line=[];
+  if(fit){
+    const xmin=Math.min(...xs),xmax=Math.max(...xs);
+    line=[[xmin,+(fit.a+fit.b*xmin).toFixed(2)],[xmax,+(fit.a+fit.b*xmax).toFixed(2)]];
+    const r=fit.r, ar=Math.abs(r);
+    const strength=ar>=.7?'strong':ar>=.4?'moderate':ar>=.2?'weak':'negligible';
+    const dir=r<0?'falls as it warms (heating-driven)':'rises as it warms (cooling-driven)';
+    sub+=`   ·   r = ${r.toFixed(2)} (${strength}), R² = ${(r*r).toFixed(2)} — consumption ${dir}`;
+  } else sub+=' · not enough data to fit';
+  document.getElementById('scSub').textContent=sub;
+  chart('scatterChart').setOption({
+    tooltip:{trigger:'item',...TT,formatter:p=>p.seriesType==='line'?'trend':
+      `<b>${p.data[2]}</b><br>🌡 ${p.data[0]}°C<br>${state.metric}: ${fmtFull(p.data[1])} ${u}`},
+    grid:{left:64,right:24,top:20,bottom:48},
+    xAxis:{type:'value',name:'Outside °C',nameLocation:'middle',nameGap:28,...AXIS,
+      nameTextStyle:{color:'#8a99b5'},axisLabel:{...AXIS.axisLabel,formatter:'{value}°'}},
+    yAxis:{type:'value',name:u,...AXIS,nameTextStyle:{color:'#8a99b5'}},
+    series:[
+      {type:'scatter',data:pts,symbolSize:9,
+       itemStyle:{color:M_HEX[state.metric]+'cc',borderColor:M_HEX[state.metric],borderWidth:1}},
+      ...(line.length?[{type:'line',data:line,symbol:'none',
+        lineStyle:{color:'#ff9f43',width:2.5,type:'dashed'},tooltip:{show:false},z:1}]:[]),
+    ],
+  },true);
+}
+
+/* ---------- KPI cards ---------- */
+function renderKPIs(){
+  const days=Math.max(1,diffDays(state.from,state.to)+1);
+  const prevTo=addDays(state.from,-1), prevFrom=addDays(prevTo,-(days-1));
+  const host=document.getElementById('kpis'); host.innerHTML='';
+  DATA.metrics.forEach(m=>{
+    const u=DATA.units[m];
+    const total=totalFor(m,state.from,state.to);
+    const prev=totalFor(m,prevFrom,prevTo);
+    const buk=bucketed(m,state.from,state.to);
+    const keys=Object.keys(buk).sort();
+    const dd=dailySeries(m,state.from,state.to);
+    let peakDay=null,peakVal=-1; for(const d in dd) if(dd[d]>peakVal){peakVal=dd[d];peakDay=d;}
+    let tcls='flat',tsym='–',tval='';
+    if(prev>0){const ch=(total-prev)/prev*100; tcls=ch>0.5?'up':ch<-0.5?'down':'flat';
+      tsym=ch>0.5?'▲':ch<-0.5?'▼':'▬'; tval=Math.abs(ch).toFixed(0)+'%';}
+    const el=document.createElement('div'); el.className='kpi panel';
+    el.innerHTML=`
+      <div class="top">
+        <div class="name"><span class="dot" style="background:${M_HEX[m]}"></span>${m}</div>
+        <div class="trend ${tcls}" title="vs previous ${days}d">${tsym} ${tval}</div>
+      </div>
+      <div class="val">${fmt(total)} <span class="unit">${u}</span></div>
+      <div class="meta">
+        <span>Ø ${fmt(total/days)} ${u}/day</span>
+        <span>Peak ${peakDay?fmt(peakVal)+' · '+peakDay.slice(5):'—'}</span>
+      </div>
+      <div class="spark" id="sp_${m}"></div>`;
+    host.appendChild(el);
+    const sp=echarts.init(document.getElementById('sp_'+m),null,{renderer:'canvas'});
+    sp.setOption({grid:{left:0,right:0,top:4,bottom:0},xAxis:{type:'category',show:false,data:keys},
+      yAxis:{type:'value',show:false},tooltip:{trigger:'axis',...TT,
+        formatter:p=>`${keys[p[0].dataIndex]}<br>${fmtFull(+p[0].value)} ${u}`},
+      series:[{type:'line',data:keys.map(k=>+buk[k].toFixed(2)),smooth:true,symbol:'none',
+        lineStyle:{color:M_HEX[m],width:2},
+        areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,
+          [{offset:0,color:M_HEX[m]+'66'},{offset:1,color:M_HEX[m]+'00'}])}}]});
+    charts['sp_'+m]=sp;
+  });
+}
+
+/* ---------- table ---------- */
+function bname(code){const b=DATA.buildings.find(x=>x.code===code);return b?b.name:code;}
+function renderTable(){
+  const rows=[];
+  DATA.buildings.forEach(b=>{
+    if(!state.buildings.has(b.code)) return;
+    const r={code:b.code,name:b.name};
+    let any=false;
+    DATA.metrics.forEach(m=>{
+      const md=DATA.daily[b.code]; let s=0;
+      if(md&&md[m]){const dd=md[m];for(const day in dd) if(day>=state.from&&day<=state.to) s+=dd[day];}
+      r[m]=s; if(s>0)any=true;
+    });
+    if(any) rows.push(r);
+  });
+  const k=state.sortKey, dir=state.sortDir;
+  rows.sort((a,b)=> k==='__name' ? dir*a.name.localeCompare(b.name) : dir*((a[k]||0)-(b[k]||0)));
+  const t=document.getElementById('tbl');
+  if(!rows.length){t.innerHTML=`<tbody><tr><td colspan="${DATA.metrics.length+1}" class="empty">No data for this selection.</td></tr></tbody>`;return;}
+  const arrow=key=> state.sortKey===key ? (state.sortDir>0?' ▲':' ▼') : '';
+  t.innerHTML=`<thead><tr>
+    <th data-k="__name">Building${arrow('__name')}</th>
+    ${DATA.metrics.map(m=>`<th data-k="${m}">${m}<br><small style="opacity:.6">${DATA.units[m]}</small>${arrow(m)}</th>`).join('')}
+   </tr></thead><tbody>
+    ${rows.map(r=>`<tr><td title="${r.code}">${r.name}</td>${DATA.metrics.map(m=>`<td>${r[m]>0?fmtFull(r[m]):'<span style="opacity:.3">—</span>'}</td>`).join('')}</tr>`).join('')}
+   </tbody>`;
+  t.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const key=th.dataset.k;
+    if(state.sortKey===key) state.sortDir*=-1; else {state.sortKey=key; state.sortDir=key==='__name'?1:-1;}
+    renderTable();
+  });
+}
+
+/* ---------- render all ---------- */
+function renderAll(){ renderKPIs(); renderTS(); renderRank(); renderPie(); renderScatter(); renderTable(); }
+
+/* ---------- UI wiring ---------- */
+function buildSidebar(){
+  document.getElementById('hsub').textContent=`${DATA.buildings.length} buildings · ${DATA.dateMin} → ${DATA.dateMax} · daily meter consumption`;
+  document.getElementById('hgen').textContent='Generated '+DATA.generated;
+  const ms=document.getElementById('metric');
+  ms.innerHTML=DATA.metrics.map(m=>`<option value="${m}">${m} (${DATA.units[m]})</option>`).join('');
+  ms.value=state.metric;
+  ms.onchange=()=>{state.metric=ms.value;renderTS();renderRank();renderPie();renderScatter();};
+
+  const f=document.getElementById('from'),t=document.getElementById('to');
+  f.min=t.min=DATA.dateMin; f.max=t.max=DATA.dateMax; f.value=state.from; t.value=state.to;
+  f.onchange=()=>{state.from=f.value>state.to?state.to:f.value;f.value=state.from;markPreset();renderAll();};
+  t.onchange=()=>{state.to=t.value<state.from?state.from:t.value;t.value=state.to;markPreset();renderAll();};
+
+  document.querySelectorAll('#presets .chip').forEach(c=>c.onclick=()=>{
+    if(c.dataset.d==='all'){state.from=DATA.dateMin;}
+    else state.from=addDays(DATA.dateMax,-(+c.dataset.d-1));
+    if(state.from<DATA.dateMin)state.from=DATA.dateMin;
+    state.to=DATA.dateMax; f.value=state.from;t.value=state.to;markPreset();renderAll();
+  });
+  document.querySelectorAll('#gran button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#gran button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.gran=b.dataset.g; renderKPIs();renderTS();renderScatter();
+  });
+
+  // building list
+  const list=document.getElementById('blist');
+  function drawList(filter=''){
+    const q=filter.toLowerCase();
+    list.innerHTML=DATA.buildings.filter(b=>b.name.toLowerCase().includes(q)||b.code.toLowerCase().includes(q))
+      .map(b=>`<label class="brow" title="${b.code} · ${b.address}">
+        <input type="checkbox" data-c="${b.code}" ${state.buildings.has(b.code)?'checked':''}>
+        <span>${b.name}</span></label>`).join('') || '<div class="empty" style="padding:18px">No match</div>';
+    list.querySelectorAll('input').forEach(cb=>cb.onchange=()=>{
+      cb.checked?state.buildings.add(cb.dataset.c):state.buildings.delete(cb.dataset.c);
+      updCount();renderAll();
+    });
+  }
+  document.getElementById('bsearch').oninput=e=>drawList(e.target.value);
+  document.getElementById('ball').onclick=()=>{DATA.buildings.forEach(b=>state.buildings.add(b.code));drawList(document.getElementById('bsearch').value);updCount();renderAll();};
+  document.getElementById('bnone').onclick=()=>{state.buildings.clear();drawList(document.getElementById('bsearch').value);updCount();renderAll();};
+  function updCount(){document.getElementById('bcount').textContent=state.buildings.size;}
+  drawList(); updCount();
+  markPreset();
+}
+function markPreset(){
+  document.querySelectorAll('#presets .chip').forEach(c=>{
+    let on=false;
+    if(c.dataset.d==='all') on=state.from===DATA.dateMin&&state.to===DATA.dateMax;
+    else on=state.to===DATA.dateMax && state.from===((d)=>d<DATA.dateMin?DATA.dateMin:d)(addDays(DATA.dateMax,-(+c.dataset.d-1)));
+    c.classList.toggle('on',on);
+  });
+}
+
+buildSidebar();
+renderAll();
+window.addEventListener('resize',()=>Object.values(charts).forEach(c=>c.resize()));
+</script>
+</body>
+</html>
