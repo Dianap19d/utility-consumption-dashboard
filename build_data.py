@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Clean meter readings + building map -> compact daily-consumption JSON for the dashboard."""
-import csv, json, openpyxl
+import csv, json, os, openpyxl
 from collections import defaultdict
 from datetime import datetime
+import db_source
 
 CSV = "./ Date filtrate.csv"
 XLSX = "Date prelucrate institutii corectate copy.xlsx"
@@ -58,7 +59,15 @@ def parse_dt(s):
 # serials are ignored (they are inconsistently transcribed). One series per
 # building+metric:  meter[(code, metric)][day] = list of base-unit readings that day
 meter = defaultdict(lambda: defaultdict(list))
-rows = list(csv.DictReader(open(CSV, encoding="utf-8-sig")))
+
+# --- data source: Azure SQL (ems-dev-db) if .env credentials exist, else CSV ---
+db_source.load_env()
+if os.environ.get("DB_USER") and os.environ.get("DB_PASSWORD"):
+    rows, table = db_source.fetch_rows()
+    print(f"source    : Azure SQL {table} ({len(rows)} rows)")
+else:
+    rows = list(csv.DictReader(open(CSV, encoding="utf-8-sig")))
+    print(f"source    : CSV {CSV} ({len(rows)} rows)")
 used_codes = set()
 for r in rows:
     metric = norm_metric(r["giz_captionraw"])

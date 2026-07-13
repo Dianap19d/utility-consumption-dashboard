@@ -51,6 +51,16 @@
   .brow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .blist::-webkit-scrollbar{width:9px}.blist::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
   .content{display:flex;flex-direction:column;gap:22px;min-width:0}
+  .topbar{padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    position:sticky;top:0;z-index:5}
+  .topbar .tlbl{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+  .mfilter{display:flex;gap:10px;flex-wrap:wrap}
+  .mchip{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:8px 14px;cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;transition:.15s}
+  .mchip .dot{width:10px;height:10px;border-radius:50%}
+  .mchip:hover{color:var(--txt)}
+  .mchip.on{color:var(--txt)}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin:0 4px 0 2px}
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
   @media(max-width:1200px){.kpis{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:560px){.kpis{grid-template-columns:1fr}}
@@ -117,11 +127,6 @@
     </div>
 
     <div class="field">
-      <label class="lbl">Focus metric (chart &amp; ranking)</label>
-      <select id="metric"></select>
-    </div>
-
-    <div class="field">
       <div class="bhead">
         <label class="lbl" style="margin:0">Buildings (<span id="bcount"></span>)</label>
         <div><span class="mini" id="ball">All</span> · <span class="mini" id="bnone">None</span></div>
@@ -133,12 +138,35 @@
   </aside>
 
   <main class="content">
+    <section class="topbar card panel">
+      <span class="tlbl">Consumable</span>
+      <div class="mfilter" id="mfilter"></div>
+    </section>
+
     <section class="kpis" id="kpis"></section>
 
     <section class="card panel">
-      <h2 id="tsTitle">Daily consumption</h2>
-      <div class="csub" id="tsSub"></div>
-      <div class="chart" id="tsChart"></div>
+      <h2 id="seasonTitle">Consumption across the heating season</h2>
+      <div class="csub" id="seasonSub"></div>
+      <div class="chart" id="seasonChart" style="height:390px"></div>
+    </section>
+
+    <section class="card panel">
+      <h2 id="baseTitle">Consumption evolution vs. baseline</h2>
+      <div class="csub" id="baseSub"></div>
+      <div class="chart" id="baseChart"></div>
+    </section>
+
+    <section class="card panel">
+      <h2 id="heatTitle">When each building consumes most</h2>
+      <div class="csub" id="heatSub"></div>
+      <div class="chart" id="heatChart" style="height:auto"></div>
+    </section>
+
+    <section class="card panel">
+      <h2 id="paretoTitle">Buildings driving 80% of consumption</h2>
+      <div class="csub" id="paretoSub"></div>
+      <div class="chart" id="paretoChart"></div>
     </section>
 
     <div class="grid2">
@@ -161,9 +189,21 @@
     </section>
 
     <section class="card panel">
+      <h2 id="dowTitle">Weekday vs. weekend</h2>
+      <div class="csub" id="dowSub"></div>
+      <div class="chart short" id="dowChart"></div>
+    </section>
+
+    <section class="card panel">
       <h2>Per-building totals</h2>
       <div class="csub">Consumption summed over the selected period. Click a header to sort.</div>
       <div class="tbl-wrap"><table id="tbl"></table></div>
+    </section>
+
+    <section class="card panel">
+      <h2 id="tsTitle">Daily consumption</h2>
+      <div class="csub" id="tsSub"></div>
+      <div class="chart" id="tsChart"></div>
     </section>
   </main>
 </div>
@@ -173,6 +213,8 @@
 /* ---------- state ---------- */
 const M_COLOR = {Electricity:'var(--elec)',Water:'var(--water)',Gas:'var(--gas)',Thermal:'var(--thermal)'};
 const M_HEX   = {Electricity:'#f7b500',Water:'#3fa9f5',Gas:'#ff6b6b',Thermal:'#9b6dff'};
+const WEEKEND_HEX = '#2dd4bf';                 // distinct hue for weekend (Fri–Sun) days
+const isWeekend = day => {const g=new Date(day+'T00:00:00Z').getUTCDay(); return g===5||g===6||g===0;}; // Fri/Sat/Sun
 const fmt = n => n>=1e6 ? (n/1e6).toFixed(2)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'k' : n.toFixed(n<10?2:1);
 const fmtFull = n => n.toLocaleString(undefined,{maximumFractionDigits:1});
 
@@ -184,10 +226,12 @@ const state = {
 };
 
 /* ---------- date helpers ---------- */
-const addDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);};
+// all date math is UTC-based: parsing as local + formatting as UTC (toISOString)
+// shifts the day in UTC+ timezones, which made addDays(+1) a no-op and daysBetween loop forever.
+const addDays=(s,n)=>{const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const diffDays=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
 function daysBetween(a,b){const out=[];let d=a;while(d<=b){out.push(d);d=addDays(d,1);}return out;}
-function weekStart(s){const d=new Date(s+'T00:00:00');const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);return d.toISOString().slice(0,10);}
+function weekStart(s){const d=new Date(s+'T00:00:00Z');const dow=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-dow);return d.toISOString().slice(0,10);}
 function bucketKey(day){
   if(state.gran==='day') return day;
   if(state.gran==='week') return weekStart(day);
@@ -256,7 +300,14 @@ function renderTS(){
   const u=DATA.units[state.metric];
   const buk=bucketed(state.metric,state.from,state.to);
   const keys=Object.keys(buk).sort();
-  const vals=keys.map(k=>+buk[k].toFixed(2));
+  const daily=state.gran==='day';
+  let vals=keys.map(k=>+buk[k].toFixed(2));
+  if(daily){
+    // weekend = Fri+Sat+Sun of the same week: sum them and split evenly across the three days
+    const wsum={};
+    keys.forEach((k,i)=>{ if(isWeekend(k)){const wk=weekStart(k); wsum[wk]=(wsum[wk]||0)+vals[i];} });
+    vals=keys.map((k,i)=> isWeekend(k) ? +((wsum[weekStart(k)]||0)/3).toFixed(2) : vals[i]);
+  }
   const temps=tempBucketed(keys);
   const hasTemp=temps.some(t=>t!==null);
   // moving average (window 7 for daily, else 3)
@@ -265,9 +316,14 @@ function renderTS(){
     return +(seg.reduce((a,b)=>a+b,0)/seg.length).toFixed(2);
   });
   const ta=periodTempAvg();
+  // per-bar colouring: on the daily view, Fri–Sun bars get the weekend hue
+  const barData=vals.map((v,i)=>({value:v, itemStyle: daily&&isWeekend(keys[i])
+    ? {color:WEEKEND_HEX,borderColor:WEEKEND_HEX,borderRadius:[3,3,0,0]}
+    : {color:M_HEX[state.metric],borderRadius:[3,3,0,0]}}));
   document.getElementById('tsTitle').textContent=`${state.metric} consumption vs. outside temperature`;
-  document.getElementById('tsSub').textContent=
+  document.getElementById('tsSub').innerHTML=
     `${state.gran[0].toUpperCase()+state.gran.slice(1)} totals · ${u} · ${state.buildings.size} building(s)`
+    + (daily?`   ·   <span class="swatch" style="background:${M_HEX[state.metric]}"></span>weekday <span class="swatch" style="background:${WEEKEND_HEX}"></span>weekend (Fri–Sun)`:'')
     + (ta?`   ·   🌡 ${DATA.tempLocation||''} avg ${ta.avg.toFixed(1)}°C (${ta.min.toFixed(0)}…${ta.max.toFixed(0)}°C)`:'');
   chart('tsChart').setOption({
     tooltip:{trigger:'axis',...TT,formatter:ps=>{
@@ -288,8 +344,7 @@ function renderTS(){
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:24,borderColor:'#28344c',
       fillerColor:'rgba(79,140,255,.18)',handleStyle:{color:'#4f8cff'},textStyle:{color:'#8a99b5'}}],
     series:[
-      {name:state.metric,type:'bar',yAxisIndex:0,data:vals,
-       itemStyle:{color:M_HEX[state.metric],borderRadius:[3,3,0,0]},barMaxWidth:34},
+      {name:state.metric,type:'bar',yAxisIndex:0,data:barData,barMaxWidth:34},
       {name:'Moving avg',type:'line',yAxisIndex:0,data:ma,smooth:true,symbol:'none',
        lineStyle:{color:'#e6ecf5',width:2,type:'dashed'}},
       ...(hasTemp?[{name:'Outside °C',type:'line',yAxisIndex:1,data:temps,smooth:true,
@@ -302,16 +357,25 @@ function renderTS(){
 function renderRank(){
   const u=DATA.units[state.metric];
   const pb=perBuilding(state.metric,state.from,state.to);
-  const arr=Object.entries(pb).sort((a,b)=>b[1]-a[1]).slice(0,15).reverse();
-  const names=arr.map(([c])=>bname(c)), vals=arr.map(([,v])=>+v.toFixed(1));
+  const full=Object.entries(pb).sort((a,b)=>b[1]-a[1]);
+  // buildings that together make up 80% of total consumption (cumulative, inclusive)
+  const total=full.reduce((s,[,v])=>s+v,0);
+  const in80=new Set(); let cum=0;
+  for(const [c,v] of full){ in80.add(c); cum+=v; if(total && cum>=total*0.8) break; }
+  const arr=full.slice(0,15).reverse();
+  const names=arr.map(([c])=>bname(c));
   document.getElementById('rankTitle').textContent=`Top buildings — ${state.metric}`;
-  document.getElementById('rankSub').textContent=`Highest ${state.metric.toLowerCase()} use this period (${u})`;
+  document.getElementById('rankSub').innerHTML=
+    `Highest ${state.metric.toLowerCase()} use this period (${u}) · `
+    + `<span class="swatch" style="background:${M_HEX[state.metric]}"></span>in the 80% (${in80.size}) · `
+    + `<span class="swatch" style="background:#3a4860"></span>the rest`;
   chart('rankChart').setOption({
     tooltip:{trigger:'axis',...TT,axisPointer:{type:'shadow'},valueFormatter:v=>fmtFull(+v)+' '+u},
     grid:{left:8,right:60,top:10,bottom:24,containLabel:true},
     xAxis:{type:'value',...AXIS},
     yAxis:{type:'category',data:names,...AXIS,axisLabel:{...AXIS.axisLabel,width:150,overflow:'truncate'}},
-    series:[{type:'bar',data:vals,itemStyle:{color:M_HEX[state.metric],borderRadius:[0,4,4,0]},
+    series:[{type:'bar',data:arr.map(([c,v])=>({value:+v.toFixed(1),
+        itemStyle:{color:in80.has(c)?M_HEX[state.metric]:'#3a4860',borderRadius:[0,4,4,0]}})),
       label:{show:true,position:'right',color:'#8a99b5',formatter:p=>fmt(p.value)}}],
   },true);
 }
@@ -377,6 +441,224 @@ function renderScatter(){
       ...(line.length?[{type:'line',data:line,symbol:'none',
         lineStyle:{color:'#ff9f43',width:2.5,type:'dashed'},tooltip:{show:false},z:1}]:[]),
     ],
+  },true);
+}
+
+/* ---------- monthly energy use vs. the weather (hero chart) ----------
+   Plain-language: one bar per month = average energy used per day that month,
+   coloured by how cold it was outside (blue = cold → orange = warm). Cold months
+   sit tall and blue; as it warms the bars shrink — the heating story at a glance. */
+function tempColor(t){                                       // -5°C (cold, blue) → 20°C (warm, orange)
+  const c=[63,169,245], w=[255,159,67];
+  let f=(t+5)/25; f=Math.max(0,Math.min(1,f));
+  return `rgb(${c.map((x,i)=>Math.round(x+(w[i]-x)*f)).join(',')})`;
+}
+function renderSeason(){
+  const m=state.metric, u=DATA.units[m];
+  const days=daysBetween(state.from,state.to);
+  const mos=[...new Set(days.map(d=>d.slice(0,7)))].sort();
+  // per month: total consumption, building-day count, distinct reporting buildings — so we
+  // can show a per-building rate (fair across months) and drop under-instrumented months.
+  const sum={},bd={},bset={},tsum={},tcnt={};
+  state.buildings.forEach(c=>{const md=DATA.daily[c]; if(!md||!md[m])return; const dd=md[m];
+    for(const d in dd){ if(d<state.from||d>state.to) continue; const k=d.slice(0,7);
+      sum[k]=(sum[k]||0)+dd[d]; bd[k]=(bd[k]||0)+1; (bset[k]=bset[k]||new Set()).add(c); }});
+  for(const d of days){const t=(DATA.temp||{})[d]; if(t!=null){const k=d.slice(0,7); tsum[k]=(tsum[k]||0)+t; tcnt[k]=(tcnt[k]||0)+1;}}
+  const maxB=Math.max(1,...mos.map(k=>bset[k]?bset[k].size:0));
+  let kept=mos.filter(k=>bset[k] && bset[k].size>=0.25*maxB);   // hide months with too few meters
+  if(!kept.length) kept=mos.slice();
+  const hidden=mos.length-kept.length;
+  const rate=kept.map(k=>+((sum[k]||0)/(bd[k]||1)).toFixed(1));  // avg use per building per day
+  const temp=kept.map(k=>tcnt[k]?tsum[k]/tcnt[k]:null);
+  const moName=k=>new Date(k+'-01T00:00:00Z').toLocaleString('en',{month:'long',timeZone:'UTC'});
+  const labels=kept.map((k,i)=>moName(k).slice(0,3)+(temp[i]!=null?'\n'+Math.round(temp[i])+'°':''));
+  // plain-language takeaway: coldest vs warmest month kept
+  let msg='';
+  const withT=kept.map((k,i)=>({i,t:temp[i],v:rate[i]})).filter(o=>o.t!=null);
+  if(withT.length>=2){
+    const cold=withT.reduce((a,b)=>b.t<a.t?b:a), warm=withT.reduce((a,b)=>b.t>a.t?b:a);
+    const more=cold.v>=warm.v;
+    msg=` · <b style="color:${more?'#3fa9f5':'#ff9f43'}">${more?'Colder months use more'
+      :'Warmer months use more'}</b>: ${moName(kept[cold.i])} (${Math.round(cold.t)}°) ${fmt(cold.v)} `
+      +`vs ${moName(kept[warm.i])} (${Math.round(warm.t)}°) ${fmt(warm.v)} ${u}/day`;
+  }
+  document.getElementById('seasonTitle').textContent=`Monthly energy use vs. the weather — ${m}`;
+  document.getElementById('seasonSub').innerHTML=
+    `Average ${u} one building uses per day, each month · bar colour = how cold it was outside `
+    +`(<span class="swatch" style="background:#3fa9f5"></span>cold → <span class="swatch" style="background:#ff9f43"></span>warm)`
+    +msg + (hidden?` · <span style="opacity:.6">${hidden} early month(s) hidden — too few meters online</span>`:'');
+  chart('seasonChart').setOption({
+    tooltip:{trigger:'axis',...TT,axisPointer:{type:'shadow'},formatter:ps=>{
+      const i=ps[0].dataIndex;
+      return `<b>${moName(kept[i])}</b><br>${fmtFull(rate[i])} ${u} per building/day`
+        +(temp[i]!=null?`<br>🌡 ${temp[i].toFixed(1)}°C outside`:'')
+        +`<br><span style="opacity:.6">${bset[kept[i]].size} buildings reporting</span>`;}},
+    grid:{left:60,right:24,top:24,bottom:44},
+    xAxis:{type:'category',data:labels,...AXIS,axisLabel:{...AXIS.axisLabel,lineHeight:16,fontSize:12}},
+    yAxis:{type:'value',...AXIS,name:u+' / building',nameTextStyle:{color:'#8a99b5'}},
+    series:[{type:'bar',barMaxWidth:90,
+      data:rate.map((v,i)=>({value:v,itemStyle:{color:temp[i]!=null?tempColor(temp[i]):M_HEX[m],borderRadius:[6,6,0,0]}})),
+      label:{show:true,position:'top',color:'#e6ecf5',fontWeight:600,formatter:p=>fmt(p.value)}}],
+  },true);
+}
+
+/* ---------- consumption evolution vs. baseline (first 2 weeks = 100) ---------- */
+function baselineDailyAvg(metric){
+  // "first 2 weeks of usable data": consumption is a day-over-day meter diff, so the very
+  // first days of the dataset are near-zero while meters come online. Anchoring the 2-week
+  // window to the first day the metric reaches 25% of its median daily total (scale-free,
+  // no unit constants) skips that ramp-up so the baseline is representative.
+  const all=dailySeries(metric,DATA.dateMin,DATA.dateMax);
+  const days=Object.keys(all).sort();
+  if(!days.length) return {avg:0, from:DATA.dateMin, to:addDays(DATA.dateMin,13)};
+  const pos=days.map(d=>all[d]).filter(v=>v>0).sort((a,b)=>a-b);
+  const med=pos.length ? (pos.length%2 ? pos[(pos.length-1)/2] : (pos[pos.length/2-1]+pos[pos.length/2])/2) : 0;
+  const start=days.find(d=>all[d]>=med*0.25) || days[0];
+  const end=addDays(start,13);
+  let s=0; for(const d of daysBetween(start,end)) s+=(all[d]||0);
+  return {avg:s/14, from:start, to:end};
+}
+function renderBaseline(){
+  const u=DATA.units[state.metric], m=state.metric;
+  const base=baselineDailyAvg(m);
+  const buk=bucketed(m,state.from,state.to);
+  const keys=Object.keys(buk).sort();
+  // day count per bucket within the visible range → convert bucket totals to avg/day
+  const cnt={}; for(const d of daysBetween(state.from,state.to)){const k=bucketKey(d);cnt[k]=(cnt[k]||0)+1;}
+  const idx=keys.map(k=>{const n=cnt[k]||1; return base.avg>0? +((buk[k]/n)/base.avg*100).toFixed(1):null;});
+  const last=idx.length?idx[idx.length-1]:null;
+  document.getElementById('baseTitle').textContent=`${m} evolution vs. baseline`;
+  document.getElementById('baseSub').innerHTML=
+    `Index (baseline = 100) · baseline = avg daily use over first 2 usable weeks (${base.from.slice(5)}→${base.to.slice(5)}) = ${fmt(base.avg)} ${u}/day`
+    + (last!=null?`   ·   latest ${state.gran} = <b style="color:${last>=100?'#f87171':'#34d399'}">${last>=100?'+':''}${(last-100).toFixed(0)}%</b> vs baseline`:'');
+  chart('baseChart').setOption({
+    tooltip:{trigger:'axis',...TT,formatter:ps=>{const p=ps[0];
+      return `<b>${p.axisValueLabel}</b><br>${p.marker}${p.value==null?'—':p.value+'% of baseline'}`;}},
+    grid:{left:52,right:24,top:20,bottom:70},
+    xAxis:{type:'category',data:keys.map(bucketLabel),...AXIS,axisLabel:{...AXIS.axisLabel,rotate:keys.length>20?45:0}},
+    yAxis:{type:'value',...AXIS,name:'% of baseline',nameTextStyle:{color:'#8a99b5'},axisLabel:{...AXIS.axisLabel,formatter:'{value}%'}},
+    dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:24,borderColor:'#28344c',
+      fillerColor:'rgba(79,140,255,.18)',handleStyle:{color:'#4f8cff'},textStyle:{color:'#8a99b5'}}],
+    series:[{name:'Index',type:'line',data:idx,smooth:true,symbol:'none',connectNulls:true,
+      lineStyle:{color:M_HEX[m],width:2.5},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,
+        [{offset:0,color:M_HEX[m]+'40'},{offset:1,color:M_HEX[m]+'00'}])},
+      markLine:{silent:true,symbol:'none',lineStyle:{color:'#8a99b5',type:'dashed'},
+        label:{color:'#8a99b5',formatter:'baseline 100%'},data:[{yAxis:100}]}}],
+  },true);
+}
+
+/* ---------- building × week heatmap ---------- */
+function renderHeatmap(){
+  const u=DATA.units[state.metric], m=state.metric;
+  const weeks=[...new Set(daysBetween(state.from,state.to).map(weekStart))].sort();
+  const pb=perBuilding(m,state.from,state.to);
+  // rows: top consumers (ascending so the biggest sits at the top of the axis), capped for legibility
+  const CAP=20;
+  const ranked=Object.entries(pb).sort((a,b)=>b[1]-a[1]);
+  const shown=ranked.slice(0,CAP).map(([c])=>c).reverse();
+  const data=[]; let maxV=0;
+  shown.forEach((code,yi)=>{
+    const dd=(DATA.daily[code]||{})[m]||{}; const wk={};
+    for(const day in dd){ if(day>=state.from&&day<=state.to){const w=weekStart(day);wk[w]=(wk[w]||0)+dd[day];}}
+    weeks.forEach((w,xi)=>{const v=+(wk[w]||0).toFixed(1); if(v>maxV)maxV=v; data.push([xi,yi,v]);});
+  });
+  document.getElementById('heatTitle').textContent=`When each building consumes most — ${m}`;
+  document.getElementById('heatSub').textContent=
+    `Weekly ${m.toLowerCase()} per building (${u}) · darker = more · ${shown.length} of ${ranked.length} buildings`
+    + (ranked.length>CAP?` (top ${CAP})`:'');
+  const el=document.getElementById('heatChart');
+  el.style.height=Math.max(180, shown.length*26+96)+'px';
+  const c=chart('heatChart'); c.resize();
+  c.setOption({
+    tooltip:{...TT,position:'top',formatter:p=>
+      `<b>${shown[p.value[1]]?bname(shown[p.value[1]]):''}</b><br>wk ${weeks[p.value[0]].slice(5)}<br>${fmtFull(p.value[2])} ${u}`},
+    grid:{left:8,right:20,top:10,bottom:60,containLabel:true},
+    xAxis:{type:'category',data:weeks.map(w=>w.slice(5)),...AXIS,
+      axisLabel:{...AXIS.axisLabel,rotate:weeks.length>16?45:0},splitArea:{show:false}},
+    yAxis:{type:'category',data:shown.map(bname),...AXIS,
+      axisLabel:{...AXIS.axisLabel,width:150,overflow:'truncate'},splitArea:{show:false}},
+    visualMap:{min:0,max:maxV||1,calculable:true,orient:'horizontal',left:'center',bottom:6,
+      itemWidth:14,itemHeight:120,textStyle:{color:'#8a99b5'},
+      inRange:{color:['#182338','#243350',M_HEX[m]]}},
+    series:[{type:'heatmap',data,progressive:0,
+      itemStyle:{borderColor:'#0f1521',borderWidth:1},
+      emphasis:{itemStyle:{borderColor:'#e6ecf5',borderWidth:1}}}],
+  },true);
+}
+
+/* ---------- Pareto: buildings driving 80% of consumption ---------- */
+function renderPareto(){
+  const u=DATA.units[state.metric], m=state.metric;
+  const arr=Object.entries(perBuilding(m,state.from,state.to)).sort((a,b)=>b[1]-a[1]);
+  const total=arr.reduce((a,[,v])=>a+v,0);
+  if(!total){document.getElementById('paretoSub').textContent='No data for this selection.';chart('paretoChart').clear();return;}
+  let cum=0, n80=0, hit=false;
+  const cats=[],share=[],cumu=[],colors=[];
+  arr.forEach(([c,v],i)=>{
+    cum+=v; const cp=cum/total*100;
+    cats.push(bname(c)); share.push(+(v/total*100).toFixed(2)); cumu.push(+cp.toFixed(2));
+    if(!hit){n80=i+1; if(cp>=80) hit=true;}
+  });
+  arr.forEach((_,i)=>colors.push(i<n80?M_HEX[m]:'#3a4860'));
+  document.getElementById('paretoTitle').textContent=`Buildings driving 80% of consumption — ${m}`;
+  document.getElementById('paretoSub').innerHTML=
+    `<b style="color:${M_HEX[m]}">${n80}</b> of ${arr.length} buildings account for 80% of total ${m.toLowerCase()} (${fmt(total)} ${u}) · `
+    + `<span class="swatch" style="background:${M_HEX[m]}"></span>in the 80% · <span class="swatch" style="background:#3a4860"></span>the rest`;
+  chart('paretoChart').setOption({
+    tooltip:{trigger:'axis',...TT,axisPointer:{type:'shadow'},formatter:ps=>{
+      const i=ps[0].dataIndex;
+      return `<b>${cats[i]}</b><br>share: ${share[i]}%<br>cumulative: ${cumu[i]}%`;}},
+    legend:{data:['Share of total','Cumulative %'],textStyle:{color:'#8a99b5'},top:0,right:0},
+    grid:{left:48,right:24,top:30,bottom:74,containLabel:true},
+    xAxis:{type:'category',data:cats,...AXIS,axisLabel:{...AXIS.axisLabel,rotate:45,width:110,overflow:'truncate',
+      interval:cats.length>40?Math.floor(cats.length/40):0}},
+    yAxis:{type:'value',max:100,...AXIS,name:'%',nameTextStyle:{color:'#8a99b5'},axisLabel:{...AXIS.axisLabel,formatter:'{value}%'}},
+    dataZoom:cats.length>25?[{type:'inside'},{type:'slider',height:16,bottom:26,borderColor:'#28344c',
+      fillerColor:'rgba(79,140,255,.18)',handleStyle:{color:'#4f8cff'},textStyle:{color:'#8a99b5'}}]:[],
+    series:[
+      {name:'Share of total',type:'bar',data:share.map((v,i)=>({value:v,itemStyle:{color:colors[i],borderRadius:[3,3,0,0]}})),barMaxWidth:26},
+      {name:'Cumulative %',type:'line',data:cumu,smooth:true,symbol:'none',lineStyle:{color:'#e6ecf5',width:2},
+       markLine:{silent:true,symbol:'none',lineStyle:{color:'#f7b500',type:'dashed'},
+         label:{color:'#f7b500',formatter:'80%'},data:[{yAxis:80}]}},
+    ],
+  },true);
+}
+
+/* ---------- weekday vs. weekend (average by day of week) ---------- */
+function renderDOW(){
+  const u=DATA.units[state.metric], m=state.metric;
+  const dd=dailySeries(m,state.from,state.to);
+  const sums=Array(7).fill(0), cnts=Array(7).fill(0);   // Mon..Sun
+  for(const d of daysBetween(state.from,state.to)){
+    const wd=(new Date(d+'T00:00:00Z').getUTCDay()+6)%7; // 0=Mon … 6=Sun
+    sums[wd]+=(dd[d]||0); cnts[wd]++;
+  }
+  const avg=sums.map((s,i)=>cnts[i]?s/cnts[i]:0);        // mean daily use per weekday (Mon..Sun)
+  // each weekend day (Fri,Sat,Sun) is shown separately but its value = (Fri+Sat+Sun) / 3
+  const wkendVal=(avg[4]+avg[5]+avg[6])/3;
+  const wkdayAvg=(avg[0]+avg[1]+avg[2]+avg[3])/4;
+  const labels=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const wkndIdx=i=>i>=4;                                  // Fri,Sat,Sun
+  const barVals=labels.map((_,i)=>+( (wkndIdx(i)?wkendVal:avg[i]) ).toFixed(2));
+  const delta=wkdayAvg>0?(wkendVal-wkdayAvg)/wkdayAvg*100:0;
+  document.getElementById('dowTitle').textContent=`Weekday vs. weekend — ${m}`;
+  document.getElementById('dowSub').innerHTML=
+    `Average daily ${m.toLowerCase()} (${u}) · weekend value = (Fri+Sat+Sun) ÷ 3 shown on each weekend day · `
+    + `<span class="swatch" style="background:${M_HEX[m]}"></span>weekday Ø ${fmt(wkdayAvg)} · `
+    + `<span class="swatch" style="background:${WEEKEND_HEX}"></span>weekend ${fmt(wkendVal)} `
+    + `(<b style="color:${delta<=0?'#34d399':'#f87171'}">${delta>0?'+':''}${delta.toFixed(0)}%</b>)`;
+  chart('dowChart').setOption({
+    tooltip:{trigger:'axis',...TT,axisPointer:{type:'shadow'},formatter:ps=>{
+      const i=ps[0].dataIndex;
+      return `<b>${labels[i]}</b>${wkndIdx(i)?' — (Fri+Sat+Sun) ÷ 3':''}<br>${ps[0].marker}${fmtFull(+ps[0].value)} ${u}`;}},
+    grid:{left:56,right:20,top:16,bottom:30},
+    xAxis:{type:'category',data:labels,...AXIS},
+    yAxis:{type:'value',...AXIS,name:u,nameTextStyle:{color:'#8a99b5'}},
+    series:[{type:'bar',data:barVals.map((v,i)=>({value:v,
+      itemStyle:{color:wkndIdx(i)?WEEKEND_HEX:M_HEX[m],borderRadius:[4,4,0,0]}})),barMaxWidth:54,
+      markLine:{silent:true,symbol:'none',lineStyle:{color:'#8a99b5',type:'dashed'},
+        label:{color:'#8a99b5',formatter:'weekday Ø',position:'insideEndTop'},data:[{yAxis:+wkdayAvg.toFixed(2)}]}}],
   },true);
 }
 
@@ -455,17 +737,35 @@ function renderTable(){
 }
 
 /* ---------- render all ---------- */
-function renderAll(){ renderKPIs(); renderTS(); renderRank(); renderPie(); renderScatter(); renderTable(); }
+function renderMetricCharts(){
+  renderSeason(); renderBaseline(); renderHeatmap(); renderPareto();
+  renderRank(); renderPie(); renderScatter(); renderDOW(); renderTS();
+}
+function renderAll(){ renderKPIs(); renderMetricCharts(); renderTable(); }
+
+/* ---------- top consumables filter ---------- */
+function setMetric(m){
+  state.metric=m;
+  document.querySelectorAll('#mfilter .mchip').forEach(el=>{
+    const on=el.dataset.m===m;
+    el.classList.toggle('on',on);
+    el.style.background=on?M_HEX[m]+'22':'var(--panel2)';
+    el.style.borderColor=on?M_HEX[m]:'var(--line)';
+  });
+  renderMetricCharts();
+}
+function buildMetricFilter(){
+  const host=document.getElementById('mfilter');
+  host.innerHTML=DATA.metrics.map(m=>
+    `<div class="mchip" data-m="${m}"><span class="dot" style="background:${M_HEX[m]}"></span>${m} <span style="opacity:.6">(${DATA.units[m]})</span></div>`).join('');
+  host.querySelectorAll('.mchip').forEach(el=>el.onclick=()=>setMetric(el.dataset.m));
+  setMetric(state.metric);
+}
 
 /* ---------- UI wiring ---------- */
 function buildSidebar(){
   document.getElementById('hsub').textContent=`${DATA.buildings.length} buildings · ${DATA.dateMin} → ${DATA.dateMax} · daily meter consumption`;
   document.getElementById('hgen').textContent='Generated '+DATA.generated;
-  const ms=document.getElementById('metric');
-  ms.innerHTML=DATA.metrics.map(m=>`<option value="${m}">${m} (${DATA.units[m]})</option>`).join('');
-  ms.value=state.metric;
-  ms.onchange=()=>{state.metric=ms.value;renderTS();renderRank();renderPie();renderScatter();};
-
   const f=document.getElementById('from'),t=document.getElementById('to');
   f.min=t.min=DATA.dateMin; f.max=t.max=DATA.dateMax; f.value=state.from; t.value=state.to;
   f.onchange=()=>{state.from=f.value>state.to?state.to:f.value;f.value=state.from;markPreset();renderAll();};
@@ -479,7 +779,7 @@ function buildSidebar(){
   });
   document.querySelectorAll('#gran button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#gran button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on'); state.gran=b.dataset.g; renderKPIs();renderTS();renderScatter();
+    b.classList.add('on'); state.gran=b.dataset.g; renderKPIs();renderMetricCharts();
   });
 
   // building list
@@ -511,6 +811,7 @@ function markPreset(){
   });
 }
 
+buildMetricFilter();
 buildSidebar();
 renderAll();
 window.addEventListener('resize',()=>Object.values(charts).forEach(c=>c.resize()));
